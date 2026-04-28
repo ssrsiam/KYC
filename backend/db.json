@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "id": "c4f725ff-cf7b-451e-a58c-2877ffb4caaa",
+    "timestamp": "2026-04-28T09:59:09.941Z",
+    "type": "platform",
+    "platform": "Tinder",
+    "photo": "1777370339184-photo.jpg",
+    "verified": false,
+    "confidence": 0,
+    "message": "Could not reach Tinder API",
+    "autoResult": "failed"
+  }
+]

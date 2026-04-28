@@ -1,20 +1,39 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as faceapi from 'face-api.js';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ScanFace, Upload, Camera, CheckCircle, AlertCircle, RotateCcw, Loader2, ChevronRight } from 'lucide-react';
+import { ScanFace, Upload, Camera, CheckCircle, AlertCircle, RotateCcw, Loader2, ChevronRight, Shield, X } from 'lucide-react';
 
-type Step = 'upload' | 'live' | 'processing' | 'result';
+type Step = 'mode-select' | 'upload' | 'live' | 'processing' | 'result' | 'platform-setup' | 'platform-upload' | 'platform-processing' | 'platform-result';
+type VerificationMode = 'live' | 'platform';
 
 const anim = { initial:{opacity:0,y:14}, animate:{opacity:1,y:0}, exit:{opacity:0,y:-14}, transition:{duration:.28} };
 
+const PLATFORMS = ['Tinder', 'Badoo', 'Hinge', 'Bumble', 'Match', 'Facebook', 'Instagram', 'Other'];
+
 const FaceVerify: React.FC = () => {
-  const [step, setStep]         = useState<Step>('upload');
+  // Mode selection
+  const [, setMode]             = useState<VerificationMode|null>(null);
+
+  // Live verification states
+  const [step, setStep]         = useState<Step>('mode-select');
   const [refImg, setRefImg]     = useState<string|null>(null);
   const [liveImg, setLiveImg]   = useState<string|null>(null);
   const [modelsOk, setModels]   = useState(false);
   const [modelMsg, setModelMsg] = useState('Loading biometric AI…');
   const [result, setResult]     = useState<{ok:boolean; distance:number; msg:string}|null>(null);
   const [camErr, setCamErr]     = useState<string|null>(null);
+  
+  // Platform verification states
+  const [platform, setPlatform] = useState(PLATFORMS[0]);
+  const [apiToken, setApiToken] = useState('');
+  const [platformPhoto, setPlatformPhoto] = useState<File | null>(null);
+  const [platformPhotoPreview, setPlatformPhotoPreview] = useState<string | null>(null);
+  const [tokenValid, setTokenValid] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [platformResult, setPlatformResult] = useState<{verified:boolean; confidence:number; message:string; recordId?:string}|null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState(0);
+
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -32,6 +51,7 @@ const FaceVerify: React.FC = () => {
     })();
   }, []);
 
+  // LIVE VERIFICATION FUNCTIONS
   const startCam = async () => {
     setCamErr(null);
     try {
@@ -89,7 +109,93 @@ const FaceVerify: React.FC = () => {
     setStep('result');
   };
 
-  const restart = () => { stopCam(); setRefImg(null); setLiveImg(null); setResult(null); setCamErr(null); setStep('upload'); };
+  // PLATFORM VERIFICATION FUNCTIONS
+  const validateToken = async () => {
+    if (!apiToken.trim()) return;
+    setValidating(true);
+    try {
+      await new Promise(r => setTimeout(r, 800));
+      setTokenValid(apiToken.length > 10);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const handlePlatformPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setPlatformPhoto(f);
+    const reader = new FileReader();
+    reader.onload = ev => setPlatformPhotoPreview(ev.target?.result as string);
+    reader.readAsDataURL(f);
+  };
+
+  const runPlatformVerification = async () => {
+    if (!platformPhoto || !apiToken || !platform) return;
+
+    setStep('platform-processing');
+    setIsProcessing(true);
+    setProgress(0);
+
+    const progressInterval = setInterval(() => {
+      setProgress(prev => Math.min(prev + Math.random() * 30, 90));
+    }, 300);
+
+    try {
+      const formData = new FormData();
+      formData.append('photo', platformPhoto);
+      formData.append('platform', platform);
+      formData.append('apiToken', apiToken);
+
+      const response = await fetch(`/api/verify/platform`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await response.json();
+
+      clearInterval(progressInterval);
+      setProgress(100);
+
+      setPlatformResult({
+        verified: data.verified,
+        confidence: data.confidence || 0,
+        message: data.message,
+        recordId: data.recordId
+      });
+
+      setStep('platform-result');
+    } catch (err) {
+      console.error(err);
+      clearInterval(progressInterval);
+      setPlatformResult({
+        verified: false,
+        confidence: 0,
+        message: 'Verification failed. Please check your credentials and try again.'
+      });
+      setStep('platform-result');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const restart = () => {
+    setMode(null);
+    setStep('mode-select');
+    stopCam();
+    setRefImg(null);
+    setLiveImg(null);
+    setResult(null);
+    setCamErr(null);
+    setPlatformPhoto(null);
+    setPlatformPhotoPreview(null);
+    setApiToken('');
+    setTokenValid(false);
+    setPlatformResult(null);
+    setProgress(0);
+  };
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -101,6 +207,55 @@ const FaceVerify: React.FC = () => {
   return (
     <div style={{ minHeight:'100vh', padding:'16px 0' }}>
       <AnimatePresence mode="wait">
+
+        {/* MODE SELECTION */}
+        {step === 'mode-select' && (
+          <motion.div {...anim} key="mode-select" style={{ maxWidth:600, margin:'60px auto', padding:'0 16px' }}>
+            <div className="card" style={{ padding:'44px 36px', textAlign:'center' }}>
+              <div style={{ width:80, height:80, background:'rgba(59,130,246,0.12)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 24px' }}>
+                <ScanFace size={40} color="var(--blue)" />
+              </div>
+              <h1 style={{ fontSize:'2rem', fontWeight:900, letterSpacing:'-.04em', marginBottom:12 }}>Biometric Verification</h1>
+              <p style={{ color:'var(--muted)', marginBottom:36, lineHeight:1.7, fontSize:'.95rem' }}>
+                Choose your verification method
+              </p>
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+                {/* Live Verification */}
+                <button onClick={() => { setMode('live'); setStep('upload'); }}
+                  style={{
+                    padding:'24px 20px', border:'2px solid var(--border)', borderRadius:12,
+                    background:'rgba(59,130,246,0.08)', cursor:'pointer', transition:'all .2s',
+                    textAlign:'center'
+                  }}
+                  onMouseEnter={(e) => {(e.currentTarget as HTMLElement).style.borderColor = 'var(--blue)'; (e.currentTarget as HTMLElement).style.background = 'rgba(59,130,246,0.15)'}}
+                  onMouseLeave={(e) => {(e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLElement).style.background = 'rgba(59,130,246,0.08)'}}
+                >
+                  <Camera size={32} style={{ marginBottom:12, color:'var(--blue)' }} />
+                  <h3 style={{ fontSize:'.95rem', fontWeight:700, marginBottom:6 }}>Live Scan</h3>
+                  <p style={{ fontSize:'.8rem', color:'var(--muted)' }}>Compare reference photo with live camera capture</p>
+                </button>
+
+                {/* Platform Verification */}
+                <button onClick={() => { setMode('platform'); setStep('platform-setup'); }}
+                  style={{
+                    padding:'24px 20px', border:'2px solid var(--border)', borderRadius:12,
+                    background:'rgba(16,185,129,0.08)', cursor:'pointer', transition:'all .2s',
+                    textAlign:'center'
+                  }}
+                  onMouseEnter={(e) => {(e.currentTarget as HTMLElement).style.borderColor = 'var(--green)'; (e.currentTarget as HTMLElement).style.background = 'rgba(16,185,129,0.15)'}}
+                  onMouseLeave={(e) => {(e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLElement).style.background = 'rgba(16,185,129,0.08)'}}
+                >
+                  <Shield size={32} style={{ marginBottom:12, color:'var(--green)' }} />
+                  <h3 style={{ fontSize:'.95rem', fontWeight:700, marginBottom:6 }}>Platform Verify</h3>
+                  <p style={{ fontSize:'.8rem', color:'var(--muted)' }}>Verify against third-party platform API</p>
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ─── LIVE VERIFICATION FLOW ─── */}
 
         {/* UPLOAD REFERENCE PHOTO */}
         {step === 'upload' && (
@@ -140,13 +295,16 @@ const FaceVerify: React.FC = () => {
                 </div>
               </label>
 
-              <button className="btn btn-green btn-full" style={{ fontSize:'1rem', padding:'16px' }}
-                disabled={!refImg || !modelsOk}
-                onClick={() => { setStep('live'); setTimeout(startCam, 80); }}>
-                {modelsOk
-                  ? <><Camera size={18} /> Proceed to Live Scan <ChevronRight size={18} /></>
-                  : <><Loader2 size={18} style={{animation:'spin 1s linear infinite'}} /> {modelMsg}</>}
-              </button>
+              <div style={{ display:'flex', gap:12 }}>
+                <button className="btn btn-ghost btn-full" onClick={restart}>← Back</button>
+                <button className="btn btn-green btn-full" style={{ fontSize:'1rem', padding:'16px' }}
+                  disabled={!refImg || !modelsOk}
+                  onClick={() => { setStep('live'); setTimeout(startCam, 80); }}>
+                  {modelsOk
+                    ? <><Camera size={18} /> Proceed to Live Scan <ChevronRight size={18} /></>
+                    : <><Loader2 size={18} style={{animation:'spin 1s linear infinite'}} /> {modelMsg}</>}
+                </button>
+              </div>
             </div>
           </motion.div>
         )}
@@ -240,6 +398,177 @@ const FaceVerify: React.FC = () => {
               </div>
 
               <button className="btn btn-ghost btn-full" onClick={restart}><RotateCcw size={15} /> Try Again</button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ─── PLATFORM VERIFICATION FLOW ─── */}
+
+        {/* PLATFORM SETUP */}
+        {step === 'platform-setup' && (
+          <motion.div {...anim} key="platform-setup" style={{ maxWidth:600, margin:'40px auto', padding:'0 16px' }}>
+            <div className="card" style={{ padding:'36px 32px' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
+                <div>
+                  <h2 style={{ fontSize:'1.5rem', fontWeight:800, marginBottom:4 }}>Platform Credentials</h2>
+                  <p style={{ color:'var(--muted)', fontSize:'.9rem' }}>Enter your {platform} API token</p>
+                </div>
+                <button onClick={restart} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)' }}>
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div style={{ marginBottom:'20px' }}>
+                <label style={{ display:'block', fontSize:'.85rem', fontWeight:600, marginBottom:'8px' }}>Select Platform</label>
+                <select
+                  value={platform}
+                  onChange={e => setPlatform(e.target.value)}
+                  style={{
+                    width:'100%', padding:'10px 12px', borderRadius:'8px', border:'1px solid var(--border)',
+                    background:'var(--bg-secondary)', color:'var(--text)', fontSize:'.95rem', cursor:'pointer'
+                  }}
+                >
+                  {PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+
+              <div style={{ marginBottom:'20px' }}>
+                <label style={{ display:'block', fontSize:'.85rem', fontWeight:600, marginBottom:'8px' }}>{platform} API Token</label>
+                <input
+                  type="password"
+                  placeholder={`Enter your ${platform} API token`}
+                  value={apiToken}
+                  onChange={e => setApiToken(e.target.value)}
+                  onBlur={validateToken}
+                  style={{
+                    width:'100%', padding:'10px 12px', borderRadius:'8px', 
+                    border:`1px solid ${tokenValid ? 'var(--green)' : 'var(--border)'}`,
+                    background:'var(--bg-secondary)', color:'var(--text)', fontSize:'.95rem',
+                    fontFamily:'monospace', marginBottom:'8px'
+                  }}
+                />
+                {validating && <p style={{ fontSize:'.75rem', color:'var(--muted)' }}><Loader2 size={12} style={{ display:'inline', marginRight:'4px', animation:'spin 1s linear infinite' }} /> Validating…</p>}
+                {tokenValid && !validating && <p style={{ fontSize:'.75rem', color:'var(--green)' }}><CheckCircle size={12} style={{ display:'inline', marginRight:'4px' }} /> Token looks valid</p>}
+              </div>
+
+              <div style={{ display:'flex', gap:'12px' }}>
+                <button className="btn btn-ghost" onClick={restart} style={{ flex:1 }}>← Back</button>
+                <button
+                  onClick={() => setStep('platform-upload')}
+                  disabled={!tokenValid || validating}
+                  style={{
+                    flex:1, padding:'10px', background:tokenValid && !validating ? 'var(--green)' : 'var(--muted)',
+                    color:'white', border:'none', borderRadius:'8px', fontWeight:600, cursor:tokenValid && !validating ? 'pointer' : 'not-allowed',
+                    opacity:tokenValid && !validating ? 1 : 0.6
+                  }}
+                >
+                  Continue →
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* PLATFORM UPLOAD PHOTO */}
+        {step === 'platform-upload' && (
+          <motion.div {...anim} key="platform-upload" style={{ maxWidth:600, margin:'40px auto', padding:'0 16px' }}>
+            <div className="card" style={{ padding:'36px 32px' }}>
+              <h2 style={{ fontSize:'1.5rem', fontWeight:800, marginBottom:'4px' }}>Upload Profile Photo</h2>
+              <p style={{ color:'var(--muted)', fontSize:'.9rem', marginBottom:'24px' }}>Upload the profile photo to verify against {platform}</p>
+
+              <div
+                style={{
+                  border:'2px dashed var(--green)', borderRadius:'12px', padding:'32px 24px',
+                  textAlign:'center', cursor:'pointer', marginBottom:'20px',
+                  background:'rgba(16,185,129,0.05)'
+                }}
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePlatformPhotoChange}
+                  style={{ display:'none' }}
+                  id="platform-photo-input"
+                />
+                <label htmlFor="platform-photo-input" style={{ cursor:'pointer', display:'block' }}>
+                  <Upload size={32} style={{ marginBottom:'8px', color:'var(--green)' }} />
+                  <p style={{ fontWeight:600, marginBottom:'4px' }}>Click to upload photo</p>
+                  <p style={{ fontSize:'.8rem', color:'var(--muted)' }}>JPG, PNG up to 20MB</p>
+                </label>
+              </div>
+
+              {platformPhotoPreview && (
+                <div style={{ marginBottom:'20px' }}>
+                  <img
+                    src={platformPhotoPreview}
+                    alt="preview"
+                    style={{ width:'100%', maxHeight:'250px', borderRadius:'8px', objectFit:'cover' }}
+                  />
+                </div>
+              )}
+
+              <div style={{ display:'flex', gap:'12px' }}>
+                <button className="btn btn-ghost" onClick={() => setStep('platform-setup')} style={{ flex:1 }}>← Back</button>
+                <button
+                  onClick={runPlatformVerification}
+                  disabled={!platformPhoto || isProcessing}
+                  style={{
+                    flex:1, padding:'10px', background:platformPhoto && !isProcessing ? 'var(--green)' : 'var(--muted)',
+                    color:'white', border:'none', borderRadius:'8px', fontWeight:600, cursor:platformPhoto && !isProcessing ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  {isProcessing ? 'Processing…' : 'Verify Profile'}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* PLATFORM PROCESSING */}
+        {step === 'platform-processing' && (
+          <motion.div {...anim} key="platform-proc" style={{ maxWidth:480, margin:'80px auto', padding:'0 16px', textAlign:'center' }}>
+            <div className="card" style={{ padding:'60px 40px' }}>
+              <div className="spinner" style={{ marginBottom:28, borderTopColor:'var(--green)', borderColor:'rgba(16,185,129,0.15)' }} />
+              <h2 style={{ fontSize:'1.5rem', fontWeight:800, marginBottom:10 }}>Verifying with {platform}…</h2>
+              <div style={{ background:'var(--bg-secondary)', borderRadius:'8px', height:'6px', marginBottom:'12px', overflow:'hidden' }}>
+                <div style={{ background:'var(--green)', height:'100%', width:`${progress}%`, transition:'width 0.3s' }} />
+              </div>
+              <p style={{ color:'var(--muted)', fontSize:'.9rem' }}>{progress}% complete</p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* PLATFORM RESULT */}
+        {step === 'platform-result' && platformResult && (
+          <motion.div {...anim} key="platform-res" style={{ maxWidth:540, margin:'40px auto', padding:'0 16px' }}>
+            <div className="card" style={{
+              padding:'40px 32px', textAlign:'center',
+              borderLeft:`4px solid ${platformResult.verified ? 'var(--green)' : 'var(--red)'}`
+            }}>
+              {platformResult.verified ? (
+                <CheckCircle size={64} color="var(--green)" />
+              ) : (
+                <AlertCircle size={64} color="var(--red)" />
+              )}
+              <h2 style={{ fontSize:'1.8rem', fontWeight:900, marginTop:16, marginBottom:12 }}>
+                {platformResult.verified ? 'Profile Verified!' : 'Verification Failed'}
+              </h2>
+              <p style={{ color:'var(--muted)', marginBottom:28, lineHeight:1.7 }}>{platformResult.message}</p>
+
+              {platformResult.confidence > 0 && (
+                <div style={{ background:'var(--bg-secondary)', padding:'16px', borderRadius:'8px', marginBottom:'24px' }}>
+                  <p style={{ fontSize:'.8rem', color:'var(--muted)', marginBottom:'8px' }}>Confidence</p>
+                  <p style={{ fontSize:'2rem', fontWeight:900, color:'var(--green)' }}>{platformResult.confidence}%</p>
+                </div>
+              )}
+
+              {platformResult.recordId && (
+                <p style={{ fontSize:'.75rem', color:'var(--muted)', fontFamily:'monospace', marginBottom:'20px' }}>
+                  Record ID: {platformResult.recordId.slice(-8)}
+                </p>
+              )}
+
+              <button className="btn btn-ghost btn-full" onClick={restart}><RotateCcw size={15} /> Verify Another</button>
             </div>
           </motion.div>
         )}

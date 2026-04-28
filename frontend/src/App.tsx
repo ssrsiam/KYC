@@ -1,9 +1,9 @@
 // Vercel Rebuild Trigger
 import { useState, useRef, useEffect } from 'react';
 import * as faceapi from 'face-api.js';
-import { Image, Zap, CheckCircle, XCircle, Key, Copy, Trash2, ToggleLeft, ToggleRight, RefreshCw } from 'lucide-react';
+import { Image, Zap, CheckCircle, XCircle } from 'lucide-react';
 
-type Tab = 'iddl' | 'biometric' | 'admin';
+type Tab = 'iddl' | 'biometric';
 type RunState = 'idle' | 'running' | 'done' | 'error';
 
 const API = ''; // Use relative path for production/Vercel
@@ -12,7 +12,7 @@ const BIO_SERVICES   = ['Tinder','Hinge','Bumble','Badoo','Grindr','MegaPersonal
 const COUNTRIES      = ['Bangladesh','United States','United Kingdom','India','Pakistan','Canada','Australia','Germany','France','Saudi Arabia','UAE','Singapore','Malaysia','Other'];
 const DOC_TYPES      = [{ v:'nid', l:'National ID (NID)' }, { v:'passport', l:'Passport' }, { v:'driving', l:'Driving Licence' }];
 
-interface TokenInfo { key: string; label: string; usesLeft: number; usesTotal: number; active: boolean; created: string; lastUsed: string|null }
+
 interface ResultData { verified?: boolean; fields?: Record<string,string>; faceMatch?: boolean|null; faceConfidence?: number; issues?: string[]; message?: string }
 
 export default function App() {
@@ -41,11 +41,7 @@ export default function App() {
   const [remaining, setRemaining] = useState(0);
   const [result, setResult]       = useState<ResultData|null>(null);
 
-  // ── Admin ──
-  const [tokens, setTokensList]   = useState<TokenInfo[]>([]);
-  const [newLabel, setNewLabel]   = useState('');
-  const [newUses, setNewUses]     = useState('-1');
-  const [stats, setStats]         = useState({ total:0, verified:0, failed:0, tokens:0 });
+
 
   const timerRef = useRef<ReturnType<typeof setInterval>|null>(null);
 
@@ -223,36 +219,6 @@ export default function App() {
     else if (tab==='biometric') runBiometric();
   };
 
-  // ── Admin helpers ─────────────────────────────────────────────────────────
-  const loadAdmin = async () => {
-    try {
-      const [tr, sr] = await Promise.all([
-        fetch(`${API}/api/admin/tokens`).then(r=>r.json()),
-        fetch(`${API}/api/admin/stats`).then(r=>r.json()),
-      ]);
-      setTokensList(tr); setStats(sr);
-    } catch {}
-  };
-  useEffect(() => { if (tab==='admin') loadAdmin(); }, [tab]);
-
-  const createToken = async () => {
-    await fetch(`${API}/api/admin/tokens`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ label: newLabel||'New Token', usesTotal: parseInt(newUses)||-1 })
-    });
-    setNewLabel(''); loadAdmin();
-  };
-
-  const toggleToken = async (key: string) => {
-    await fetch(`${API}/api/admin/tokens/${key}/toggle`, { method:'PATCH' });
-    loadAdmin();
-  };
-  const deleteToken = async (key: string) => {
-    if (!confirm('Delete this token?')) return;
-    await fetch(`${API}/api/admin/tokens/${key}`, { method:'DELETE' });
-    loadAdmin();
-  };
-
   // ── UI helpers ────────────────────────────────────────────────────────────
   const dotClass = runState==='idle'?'dot-idle':runState==='running'?'dot-running':runState==='done'?'dot-ok':'dot-fail';
 
@@ -357,10 +323,10 @@ export default function App() {
 
       {/* Tabs */}
       <div className="tabs-bar">
-        {(['iddl','biometric','admin'] as Tab[]).map(t => (
+        {(['iddl','biometric'] as Tab[]).map(t => (
           <div key={t} className={`tab ${tab===t?'active':''}`}
             onClick={()=>{setTab(t);setResult(null);setRunState('idle');setProgress(0);setRemaining(0);}}>
-            {t==='iddl'?'ID/DL Verification':t==='biometric'?'Biometric Verification':'Admin'}
+            {t==='iddl'?'ID/DL Verification':'Biometric Verification'}
           </div>
         ))}
       </div>
@@ -440,96 +406,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Admin tab ────────────────────────────────────────────────────── */}
-      {tab==='admin' && (
-        <div className="tab-content" style={{flexDirection:'column',padding:'0',overflow:'auto'}}>
-          <div style={{padding:'16px 20px',display:'flex',flexDirection:'column',gap:'20px',flex:1}}>
-            {/* Stats */}
-            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}}>
-              {[
-                {l:'Total Records', v:stats.total,    c:'var(--accent)'},
-                {l:'Verified',      v:stats.verified, c:'var(--green)'},
-                {l:'Failed',        v:stats.failed,   c:'var(--red)'},
-                {l:'Active Tokens', v:stats.tokens,   c:'var(--yellow)'},
-              ].map(s=>(
-                <div key={s.l} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:10,padding:'14px 16px'}}>
-                  <div style={{fontSize:'1.8rem',fontWeight:900,color:s.c,lineHeight:1}}>{s.v}</div>
-                  <div style={{fontSize:'11px',color:'var(--muted)',marginTop:4,textTransform:'uppercase',letterSpacing:'.06em'}}>{s.l}</div>
-                </div>
-              ))}
-            </div>
 
-            {/* Generate token */}
-            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,padding:'16px 18px'}}>
-              <p style={{fontSize:'11px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>Generate New Token</p>
-              <div style={{display:'flex',gap:10,alignItems:'flex-end'}}>
-                <div style={{flex:1}}>
-                  <label className="form-label" style={{display:'block',marginBottom:5}}>Label</label>
-                  <input className="form-input" placeholder="e.g. Client A" value={newLabel} onChange={e=>setNewLabel(e.target.value)}/>
-                </div>
-                <div style={{width:120}}>
-                  <label className="form-label" style={{display:'block',marginBottom:5}}>Max Uses (-1 = ∞)</label>
-                  <input className="form-input" type="number" value={newUses} onChange={e=>setNewUses(e.target.value)} placeholder="-1"/>
-                </div>
-                <button className="run-btn" style={{padding:'9px 18px',marginTop:0,width:'auto'}} onClick={createToken}>
-                  <Key size={13}/> Generate
-                </button>
-                <button style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,padding:'9px 12px',cursor:'pointer',color:'var(--muted)'}} onClick={loadAdmin}>
-                  <RefreshCw size={14}/>
-                </button>
-              </div>
-            </div>
-
-            {/* Token list */}
-            <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:12,overflow:'hidden'}}>
-              <table style={{width:'100%',borderCollapse:'collapse'}}>
-                <thead>
-                  <tr style={{background:'rgba(255,255,255,0.02)',borderBottom:'1px solid var(--border)'}}>
-                    {['Label','Token Key','Uses','Active','Created','Actions'].map(h=>(
-                      <th key={h} style={{padding:'10px 14px',textAlign:'left',fontSize:'10px',fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'.08em',whiteSpace:'nowrap'}}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {tokens.length===0 && (
-                    <tr><td colSpan={6} style={{padding:'24px',textAlign:'center',color:'var(--muted)',fontSize:'12px'}}>No tokens yet — generate one above</td></tr>
-                  )}
-                  {tokens.map(t=>(
-                    <tr key={t.key} style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
-                      <td style={{padding:'10px 14px',fontSize:'12px',fontWeight:600}}>{t.label}</td>
-                      <td style={{padding:'10px 14px',fontFamily:'monospace',fontSize:'11px',color:'var(--muted)'}}>
-                        <div style={{display:'flex',alignItems:'center',gap:8}}>
-                          <span>{t.key.slice(0,20)}…</span>
-                          <button style={{background:'none',border:'none',cursor:'pointer',color:'var(--muted)',padding:2}} onClick={()=>navigator.clipboard.writeText(t.key)} title="Copy">
-                            <Copy size={12}/>
-                          </button>
-                        </div>
-                      </td>
-                      <td style={{padding:'10px 14px',fontSize:'12px',color:'var(--muted)'}}>
-                        {t.usesLeft===-1?'∞':t.usesLeft} / {t.usesTotal===-1?'∞':t.usesTotal}
-                      </td>
-                      <td style={{padding:'10px 14px'}}>
-                        <button style={{background:'none',border:'none',cursor:'pointer',color:t.active?'var(--green)':'var(--red)',display:'flex',alignItems:'center',gap:5}} onClick={()=>toggleToken(t.key)}>
-                          {t.active?<ToggleRight size={20}/>:<ToggleLeft size={20}/>}
-                          <span style={{fontSize:'11px'}}>{t.active?'Active':'Inactive'}</span>
-                        </button>
-                      </td>
-                      <td style={{padding:'10px 14px',fontSize:'11px',color:'var(--muted)',whiteSpace:'nowrap'}}>
-                        {new Date(t.created).toLocaleDateString()}
-                      </td>
-                      <td style={{padding:'10px 14px'}}>
-                        <button style={{background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:6,padding:'5px 8px',cursor:'pointer',color:'var(--red)'}} onClick={()=>deleteToken(t.key)}>
-                          <Trash2 size={13}/>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Status bar */}
       <div className="status-bar">
