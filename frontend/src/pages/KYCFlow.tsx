@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import * as faceapi from 'face-api.js';
 import { createWorker } from 'tesseract.js';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldCheck, Camera, FileText, CheckCircle, AlertCircle, Loader2, RotateCcw, ChevronRight, ScanLine } from 'lucide-react';
+import { ShieldCheck, CheckCircle, AlertCircle, Loader2, RotateCcw, ChevronRight, ScanLine } from 'lucide-react';
 
 type DocType = 'nid' | 'passport' | 'driving';
 type Step = 'select' | 'capture-front' | 'capture-back' | 'capture-face' | 'processing' | 'result';
