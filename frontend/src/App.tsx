@@ -5,7 +5,7 @@ import { Image, Zap, CheckCircle, XCircle, Key, Copy, Trash2, ToggleLeft, Toggle
 type Tab = 'iddl' | 'biometric' | 'admin';
 type RunState = 'idle' | 'running' | 'done' | 'error';
 
-const API = 'http://localhost:5000';
+const API = ''; // Use relative path for production/Vercel
 const ID_DL_SERVICES = ['MegaPersonals','Grindr','Badoo','Hinge','Match','Bumble','Facebook','Instagram','OnlyFans','Other'];
 const BIO_SERVICES   = ['Tinder','Hinge','Bumble','Badoo','Grindr','MegaPersonals','Facebook','Instagram','Other'];
 const COUNTRIES      = ['Bangladesh','United States','United Kingdom','India','Pakistan','Canada','Australia','Germany','France','Saudi Arabia','UAE','Singapore','Malaysia','Other'];
