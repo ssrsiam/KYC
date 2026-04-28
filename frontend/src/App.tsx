@@ -1,3 +1,4 @@
+// Vercel Rebuild Trigger
 import { useState, useRef, useEffect } from 'react';
 import * as faceapi from 'face-api.js';
 import { Image, Zap, CheckCircle, XCircle, Key, Copy, Trash2, ToggleLeft, ToggleRight, RefreshCw } from 'lucide-react';
